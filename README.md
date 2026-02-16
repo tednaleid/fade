@@ -7,8 +7,11 @@ A macOS command-line image slideshow viewer with cross-fade transitions.
 - Displays JPG and PNG images from a directory with configurable fade transitions
 - Keyboard and mouse navigation (next, previous, pause/play)
 - Tag images using macOS Finder tags (Favorite/Green, Trash/Red) with arrow keys
+- Forward navigation automatically skips trash-tagged images
+- Backward navigation shows all images, including trash (for recovery)
 - Trash-tagged images are shown desaturated
 - Shuffle with optional seed for reproducible ordering
+- Directory is rescanned every 12 seconds to pick up new images
 - Runs as a background process by default, returning control to the terminal immediately
 
 ## Requirements
@@ -58,14 +61,14 @@ fade [directory] [options]
 
 | Input | Action |
 |-------|--------|
-| Right arrow | Next image |
-| Left arrow | Previous image |
+| Right arrow | Next untrashed image |
+| Left arrow | Previous image (including trash) |
 | Up arrow | Tag toward Favorite (Trash > Untagged > Favorite) |
 | Down arrow | Tag toward Trash (Favorite > Untagged > Trash) |
 | Space | Toggle pause/play |
 | Q / Escape | Quit |
-| Click left 10% | Previous image |
-| Click right 10% | Next image |
+| Click left 10% | Previous image (including trash) |
+| Click right 10% | Next untrashed image |
 | Click center | Toggle pause/play |
 
 ## Examples

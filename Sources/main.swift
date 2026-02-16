@@ -85,7 +85,9 @@ struct Fade: ParsableCommand {
             noLoop: noLoop,
             fitScreen: !actualSize,
             windowWidth: CGFloat(width),
-            windowHeight: CGFloat(height)
+            windowHeight: CGFloat(height),
+            directoryURL: dirURL,
+            isRandom: random
         )
 
         // Spawn a background process so the CLI returns immediately
@@ -213,6 +215,8 @@ struct SlideshowConfig {
     let fitScreen: Bool
     let windowWidth: CGFloat
     let windowHeight: CGFloat
+    let directoryURL: URL
+    let isRandom: Bool
 }
 
 // MARK: - App Delegate
@@ -304,19 +308,23 @@ class StatusIconView: NSView {
 
 class SlideshowController: NSObject, NSWindowDelegate {
     let config: SlideshowConfig
+    var paths: [String]
     let window: SlideshowWindow
 
     // Two image views for cross-fade
     let frontView: NSImageView
     let backView: NSImageView
 
-    // Status icon overlay
+    // Status overlays
     let statusIcon: StatusIconView
+    let statusLabel: NSTextField
     var statusFadeTimer: Timer?
 
     var currentIndex: Int = 0
     var isPaused: Bool = false
+    var allTrashed: Bool = false
     var advanceTimer: Timer?
+    var refreshTimer: Timer?
 
     // Preloaded next image
     var preloadedImage: NSImage?
@@ -331,6 +339,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     init(config: SlideshowConfig) {
         self.config = config
+        self.paths = config.paths
 
         let contentRect = NSRect(x: 0, y: 0, width: config.windowWidth, height: config.windowHeight)
         window = SlideshowWindow(
@@ -375,6 +384,26 @@ class SlideshowController: NSObject, NSWindowDelegate {
         statusIcon.alphaValue = 0
         containerView.addSubview(statusIcon)
 
+        // Status text label (centered, hidden by default)
+        statusLabel = NSTextField(labelWithString: "")
+        statusLabel.font = NSFont.systemFont(ofSize: 24, weight: .light)
+        statusLabel.textColor = .white
+        statusLabel.backgroundColor = NSColor(white: 0, alpha: 0.6)
+        statusLabel.wantsLayer = true
+        statusLabel.layer?.cornerRadius = 12
+        statusLabel.alignment = .center
+        statusLabel.isBezeled = false
+        statusLabel.isEditable = false
+        statusLabel.drawsBackground = true
+        statusLabel.alphaValue = 0
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(statusLabel)
+        NSLayoutConstraint.activate([
+            statusLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            statusLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+        ])
+
         window.contentView = containerView
 
         super.init()
@@ -384,14 +413,24 @@ class SlideshowController: NSObject, NSWindowDelegate {
     }
 
     func start() {
-        guard !config.paths.isEmpty else { return }
+        guard !paths.isEmpty else { return }
 
-        // Load and display the first image
-        if let image = loadImage(at: 0) {
+        // Find the first untrashed image to display
+        guard let startIndex = firstUntrashedIndex() else {
+            // All images are trashed
+            window.makeKeyAndOrderFront(nil)
+            let clickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
+            window.contentView?.addGestureRecognizer(clickRecognizer)
+            enterAllTrashedState()
+            startRefreshTimer()
+            return
+        }
+
+        if let image = loadImage(at: startIndex) {
             frontView.image = image
             frontView.alphaValue = 1
             backView.alphaValue = 0
-            currentIndex = 0
+            currentIndex = startIndex
             updateDisplayState()
 
             if config.fitScreen, let screen = NSScreen.main {
@@ -419,16 +458,17 @@ class SlideshowController: NSObject, NSWindowDelegate {
         let clickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
         window.contentView?.addGestureRecognizer(clickRecognizer)
 
-        // Preload next and start timer
+        // Preload next and start timers
         preloadNext()
         scheduleAdvance()
+        startRefreshTimer()
     }
 
     // MARK: - Display State
 
     // Updates title bar and desaturation filter to reflect current image's tag state.
     func updateDisplayState() {
-        let path = config.paths[currentIndex]
+        let path = paths[currentIndex]
         let tags = getFileTags(path: path)
 
         var title = (path as NSString).lastPathComponent
@@ -441,11 +481,49 @@ class SlideshowController: NSObject, NSWindowDelegate {
         frontView.contentFilters = isTrash ? [desaturateFilter] : []
     }
 
+    // MARK: - All-Trashed State
+
+    func checkAllTrashed() -> Bool {
+        return paths.allSatisfy { getFileTags(path: $0).contains(trashTag.finderTag) }
+    }
+
+    // Returns the index of the first untrashed image, or nil if all are trashed.
+    func firstUntrashedIndex() -> Int? {
+        return paths.firstIndex { !getFileTags(path: $0).contains(trashTag.finderTag) }
+    }
+
+    func enterAllTrashedState() {
+        allTrashed = true
+        advanceTimer?.invalidate()
+        frontView.image = makeMessageImage("No untrashed images")
+        frontView.contentFilters = []
+        backView.alphaValue = 0
+        window.title = "No untrashed images"
+    }
+
+    func makeMessageImage(_ text: String) -> NSImage {
+        let size = window.contentView?.bounds.size ?? NSSize(width: 800, height: 200)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.black.setFill()
+        NSBezierPath.fill(NSRect(origin: .zero, size: size))
+        let attrs: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.gray,
+            .font: NSFont.systemFont(ofSize: 36, weight: .light)
+        ]
+        let attrStr = NSAttributedString(string: text, attributes: attrs)
+        let strSize = attrStr.size()
+        let point = NSPoint(x: (size.width - strSize.width) / 2, y: (size.height - strSize.height) / 2)
+        attrStr.draw(at: point)
+        image.unlockFocus()
+        return image
+    }
+
     // MARK: - Image Loading
 
     func loadImage(at index: Int) -> NSImage? {
-        guard index >= 0 && index < config.paths.count else { return nil }
-        let path = config.paths[index]
+        guard index >= 0 && index < paths.count else { return nil }
+        let path = paths[index]
         guard let image = NSImage(contentsOfFile: path) else { return nil }
         // Force decode by requesting a CGImage
         if let tiff = image.tiffRepresentation,
@@ -456,7 +534,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
     }
 
     func preloadNext() {
-        let nextIdx = nextIndex()
+        let nextIdx = nextUntrashedIndex()
         guard nextIdx != nil else {
             preloadedImage = nil
             preloadedIndex = nil
@@ -477,7 +555,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     func nextIndex() -> Int? {
         let next = currentIndex + 1
-        if next < config.paths.count {
+        if next < paths.count {
             return next
         } else if config.noLoop {
             return nil
@@ -491,8 +569,34 @@ class SlideshowController: NSObject, NSWindowDelegate {
         if prev >= 0 {
             return prev
         } else {
-            return config.paths.count - 1
+            return paths.count - 1
         }
+    }
+
+    // Returns the next index that is not tagged as trash, or nil if all are trash
+    // (or no-loop mode and we've reached the end).
+    func nextUntrashedIndex() -> Int? {
+        let count = paths.count
+        guard count > 0 else { return nil }
+
+        var candidate = currentIndex
+        for _ in 0..<count {
+            candidate += 1
+            if candidate >= count {
+                if config.noLoop {
+                    return nil
+                }
+                candidate = 0
+            }
+            if candidate == currentIndex {
+                return nil
+            }
+            let tags = getFileTags(path: paths[candidate])
+            if !tags.contains(trashTag.finderTag) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     func scheduleAdvance() {
@@ -504,9 +608,19 @@ class SlideshowController: NSObject, NSWindowDelegate {
     }
 
     func advanceWithFade() {
-        guard let nextIdx = nextIndex() else {
-            // No-loop mode: we've shown all images
-            NSApplication.shared.terminate(nil)
+        guard let nextIdx = nextUntrashedIndex() else {
+            if config.noLoop {
+                NSApplication.shared.terminate(nil)
+                return
+            }
+            // Check if the current image is the sole untrashed one
+            let currentIsTrashed = getFileTags(path: paths[currentIndex]).contains(trashTag.finderTag)
+            if currentIsTrashed {
+                enterAllTrashedState()
+            } else {
+                showStatusMessage("1 untrashed image")
+                scheduleAdvance()
+            }
             return
         }
 
@@ -525,7 +639,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let nextIsTrash = getFileTags(path: config.paths[nextIdx]).contains(trashTag.finderTag)
+        let nextIsTrash = getFileTags(path: paths[nextIdx]).contains(trashTag.finderTag)
         crossFade(to: image, isTrash: nextIsTrash)
         currentIndex = nextIdx
         updateDisplayState()
@@ -574,16 +688,25 @@ class SlideshowController: NSObject, NSWindowDelegate {
     }
 
     func goNext() {
-        guard let idx = nextIndex() else {
+        guard let idx = nextUntrashedIndex() else {
             if config.noLoop {
                 NSApplication.shared.terminate(nil)
+                return
+            }
+            let currentIsTrashed = getFileTags(path: paths[currentIndex]).contains(trashTag.finderTag)
+            if currentIsTrashed && !allTrashed {
+                enterAllTrashedState()
+            } else if !currentIsTrashed {
+                showStatusMessage("1 untrashed image")
             }
             return
         }
+        allTrashed = false
         jumpTo(index: idx)
     }
 
     func goPrevious() {
+        allTrashed = false
         jumpTo(index: previousIndex())
     }
 
@@ -613,6 +736,19 @@ class SlideshowController: NSObject, NSWindowDelegate {
         }
     }
 
+    func showStatusMessage(_ text: String) {
+        statusFadeTimer?.invalidate()
+        statusLabel.stringValue = "  \(text)  "
+        statusLabel.alphaValue = 1
+
+        statusFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.5
+                self?.statusLabel.animator().alphaValue = 0
+            }
+        }
+    }
+
     // MARK: - Keyboard
 
     func handleKeyDown(_ event: NSEvent) {
@@ -624,10 +760,16 @@ class SlideshowController: NSObject, NSWindowDelegate {
         case 123: // Left arrow
             goPrevious()
         case 126: // Up arrow — move toward Favorite
-            tagUp(path: config.paths[currentIndex])
+            tagUp(path: paths[currentIndex])
             updateDisplayState()
+            if allTrashed && !checkAllTrashed() {
+                allTrashed = false
+                if !isPaused {
+                    scheduleAdvance()
+                }
+            }
         case 125: // Down arrow — move toward Trash
-            tagDown(path: config.paths[currentIndex])
+            tagDown(path: paths[currentIndex])
             updateDisplayState()
         case 53:  // Escape
             NSApplication.shared.terminate(nil)
@@ -657,10 +799,54 @@ class SlideshowController: NSObject, NSWindowDelegate {
         }
     }
 
+    // MARK: - Directory Refresh
+
+    func startRefreshTimer() {
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 12.0, repeats: true) { [weak self] _ in
+            self?.refreshDirectory()
+        }
+    }
+
+    func refreshDirectory() {
+        let currentPath = paths.isEmpty ? nil : paths[currentIndex]
+
+        var newPaths = loadImagePaths(from: config.directoryURL)
+        guard !newPaths.isEmpty else { return }
+
+        if config.isRandom {
+            let newSeed = UInt64.random(in: 0...UInt64.max)
+            var rng = SeededRNG(seed: newSeed)
+            newPaths.shuffle(using: &rng)
+        }
+
+        paths = newPaths
+
+        if let currentPath = currentPath, let newIndex = paths.firstIndex(of: currentPath) {
+            currentIndex = newIndex
+        } else {
+            currentIndex = min(currentIndex, paths.count - 1)
+        }
+
+        preloadedImage = nil
+        preloadedIndex = nil
+        preloadNext()
+
+        if allTrashed && !checkAllTrashed() {
+            allTrashed = false
+            updateDisplayState()
+            if !isPaused {
+                scheduleAdvance()
+            }
+        } else if !allTrashed && checkAllTrashed() {
+            enterAllTrashedState()
+        }
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
         advanceTimer?.invalidate()
         statusFadeTimer?.invalidate()
+        refreshTimer?.invalidate()
     }
 }
