@@ -40,6 +40,9 @@ struct Fade: ParsableCommand {
     @Flag(name: .long, help: .hidden)
     var _spawned: Bool = false
 
+    @Option(help: "Seconds between directory rescans for new images.")
+    var scan: Double = 30.0
+
     @Option(help: "Initial window width.")
     var width: Int = 800
 
@@ -87,7 +90,8 @@ struct Fade: ParsableCommand {
             windowWidth: CGFloat(width),
             windowHeight: CGFloat(height),
             directoryURL: dirURL,
-            isRandom: random
+            isRandom: random,
+            scanInterval: scan
         )
 
         // Spawn a background process so the CLI returns immediately
@@ -217,6 +221,7 @@ struct SlideshowConfig {
     let windowHeight: CGFloat
     let directoryURL: URL
     let isRandom: Bool
+    let scanInterval: Double
 }
 
 // MARK: - App Delegate
@@ -802,7 +807,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
     // MARK: - Directory Refresh
 
     func startRefreshTimer() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 12.0, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: config.scanInterval, repeats: true) { [weak self] _ in
             self?.refreshDirectory()
         }
     }

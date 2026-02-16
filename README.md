@@ -51,6 +51,7 @@ fade [directory] [options]
 | `-f, --fade` | 1.5 | Fade transition duration in seconds |
 | `-r, --random` | off | Shuffle image order |
 | `-s, --seed` | auto | Seed for shuffle (UInt64), printed to stdout if auto-generated |
+| `--scan` | 30 | Seconds between directory rescans for new images |
 | `--no-loop` | off | Exit after showing all images once |
 | `--actual-size` | off | Use `--width`/`--height` instead of fitting to screen |
 | `--width` | 800 | Initial window width |
