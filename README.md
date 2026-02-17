@@ -72,6 +72,10 @@ fade [directory] [options]
 | Click right 10% | Next untrashed image |
 | Click center | Toggle pause/play |
 
+All navigation and tagging actions show a brief directional arrow indicator on the
+corresponding edge of the screen. When tagging results in Favorite or Trash, the
+slideshow auto-advances to the next untrashed image after the indicator fades.
+
 ## Examples
 
 ```

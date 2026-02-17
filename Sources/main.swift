@@ -261,7 +261,7 @@ class SlideshowWindow: NSWindow {
 // MARK: - Status Icon View
 
 class StatusIconView: NSView {
-    enum Icon { case pause, play }
+    enum Icon { case pause, play, neutral }
 
     var icon: Icon = .pause {
         didSet { needsDisplay = true }
@@ -305,7 +305,103 @@ class StatusIconView: NSView {
             path.line(to: NSPoint(x: cx + size * 0.6, y: cy))
             path.close()
             path.fill()
+
+        case .neutral:
+            // Horizontal dash: —
+            let barW: CGFloat = 30
+            let barH: CGFloat = 8
+            NSBezierPath(rect: NSRect(x: cx - barW / 2, y: cy - barH / 2, width: barW, height: barH)).fill()
         }
+    }
+}
+
+// MARK: - Directional Arrow View
+
+class DirectionalArrowView: NSView {
+    enum Direction { case left, right, up, down }
+
+    let direction: Direction
+    let originalColor: NSColor
+    var color: NSColor { didSet { needsDisplay = true } }
+    var drawDash: Bool = false { didSet { needsDisplay = true } }
+    var fadeTimer: Timer?
+
+    init(direction: Direction, color: NSColor, frame: NSRect) {
+        self.direction = direction
+        self.originalColor = color
+        self.color = color
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 16
+        layer?.backgroundColor = NSColor(white: 0, alpha: 0.6).cgColor
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func flash() {
+        drawDash = false
+        color = originalColor
+        fadeTimer?.invalidate()
+        alphaValue = 1
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                self?.animator().alphaValue = 0
+            }
+        }
+    }
+
+    func flashDash(withColor c: NSColor) {
+        drawDash = true
+        color = c
+        fadeTimer?.invalidate()
+        alphaValue = 1
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                self?.animator().alphaValue = 0
+            }
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        color.setFill()
+
+        let bounds = self.bounds
+        let cx = bounds.midX
+        let cy = bounds.midY
+        let size: CGFloat = 30
+
+        if drawDash {
+            // Horizontal dash: —
+            let barW: CGFloat = 30
+            let barH: CGFloat = 8
+            NSBezierPath(rect: NSRect(x: cx - barW / 2, y: cy - barH / 2, width: barW, height: barH)).fill()
+            return
+        }
+
+        let path = NSBezierPath()
+        switch direction {
+        case .right:
+            path.move(to: NSPoint(x: cx - size * 0.4, y: cy + size / 2))
+            path.line(to: NSPoint(x: cx - size * 0.4, y: cy - size / 2))
+            path.line(to: NSPoint(x: cx + size * 0.6, y: cy))
+        case .left:
+            path.move(to: NSPoint(x: cx + size * 0.4, y: cy + size / 2))
+            path.line(to: NSPoint(x: cx + size * 0.4, y: cy - size / 2))
+            path.line(to: NSPoint(x: cx - size * 0.6, y: cy))
+        case .up:
+            path.move(to: NSPoint(x: cx - size / 2, y: cy - size * 0.4))
+            path.line(to: NSPoint(x: cx + size / 2, y: cy - size * 0.4))
+            path.line(to: NSPoint(x: cx, y: cy + size * 0.6))
+        case .down:
+            path.move(to: NSPoint(x: cx - size / 2, y: cy + size * 0.4))
+            path.line(to: NSPoint(x: cx + size / 2, y: cy + size * 0.4))
+            path.line(to: NSPoint(x: cx, y: cy - size * 0.6))
+        }
+        path.close()
+        path.fill()
     }
 }
 
@@ -325,11 +421,18 @@ class SlideshowController: NSObject, NSWindowDelegate {
     let statusLabel: NSTextField
     var statusFadeTimer: Timer?
 
+    // Directional arrow overlays
+    let arrowLeft: DirectionalArrowView
+    let arrowRight: DirectionalArrowView
+    let arrowUp: DirectionalArrowView
+    let arrowDown: DirectionalArrowView
+
     var currentIndex: Int = 0
     var isPaused: Bool = false
     var allTrashed: Bool = false
     var advanceTimer: Timer?
     var refreshTimer: Timer?
+    var autoAdvanceTimer: Timer?
 
     // Preloaded next image
     var preloadedImage: NSImage?
@@ -408,6 +511,43 @@ class SlideshowController: NSObject, NSWindowDelegate {
             statusLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
         ])
+
+        // Directional arrow overlays (edges, hidden by default)
+        let margin: CGFloat = 20
+        let arrowLR = NSSize(width: 60, height: 80)  // tall for left/right
+        let arrowUD = NSSize(width: 80, height: 60)   // wide for up/down
+
+        arrowLeft = DirectionalArrowView(direction: .left, color: .white, frame: NSRect(
+            x: margin,
+            y: (contentRect.height - arrowLR.height) / 2,
+            width: arrowLR.width, height: arrowLR.height))
+        arrowLeft.autoresizingMask = [.maxXMargin, .minYMargin, .maxYMargin]
+        arrowLeft.alphaValue = 0
+        containerView.addSubview(arrowLeft)
+
+        arrowRight = DirectionalArrowView(direction: .right, color: .white, frame: NSRect(
+            x: contentRect.width - arrowLR.width - margin,
+            y: (contentRect.height - arrowLR.height) / 2,
+            width: arrowLR.width, height: arrowLR.height))
+        arrowRight.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+        arrowRight.alphaValue = 0
+        containerView.addSubview(arrowRight)
+
+        arrowUp = DirectionalArrowView(direction: .up, color: .systemGreen, frame: NSRect(
+            x: (contentRect.width - arrowUD.width) / 2,
+            y: contentRect.height - arrowUD.height - margin,
+            width: arrowUD.width, height: arrowUD.height))
+        arrowUp.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
+        arrowUp.alphaValue = 0
+        containerView.addSubview(arrowUp)
+
+        arrowDown = DirectionalArrowView(direction: .down, color: .systemRed, frame: NSRect(
+            x: (contentRect.width - arrowUD.width) / 2,
+            y: margin,
+            width: arrowUD.width, height: arrowUD.height))
+        arrowDown.autoresizingMask = [.minXMargin, .maxXMargin, .maxYMargin]
+        arrowDown.alphaValue = 0
+        containerView.addSubview(arrowDown)
 
         window.contentView = containerView
 
@@ -730,6 +870,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     func showStatusIcon(_ icon: StatusIconView.Icon) {
         statusFadeTimer?.invalidate()
+        statusLabel.alphaValue = 0
         statusIcon.icon = icon
         statusIcon.alphaValue = 1
 
@@ -743,6 +884,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     func showStatusMessage(_ text: String) {
         statusFadeTimer?.invalidate()
+        statusIcon.alphaValue = 0
         statusLabel.stringValue = "  \(text)  "
         statusLabel.alphaValue = 1
 
@@ -754,6 +896,37 @@ class SlideshowController: NSObject, NSWindowDelegate {
         }
     }
 
+    func flashArrow(_ direction: DirectionalArrowView.Direction) {
+        switch direction {
+        case .left: arrowLeft.flash()
+        case .right: arrowRight.flash()
+        case .up: arrowUp.flash()
+        case .down: arrowDown.flash()
+        }
+    }
+
+    // After tagging, check if image reached Favorite/Trash (auto-advance) or Untagged (neutral icon).
+    func handleTagResult(direction: DirectionalArrowView.Direction) {
+        autoAdvanceTimer?.invalidate()
+        let tags = getFileTags(path: paths[currentIndex])
+        let isFavorite = tags.contains(favoriteTag.finderTag)
+        let isTrash = tags.contains(trashTag.finderTag)
+
+        if isFavorite || isTrash {
+            flashArrow(direction)
+            autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                self.goNext()
+                self.flashArrow(.right)
+            }
+        } else {
+            // Show a dash at the same edge where the tag was removed
+            let arrowView = direction == .up ? arrowUp : arrowDown
+            let dashColor = direction == .up ? NSColor.systemRed : NSColor.systemGreen
+            arrowView.flashDash(withColor: dashColor)
+        }
+    }
+
     // MARK: - Keyboard
 
     func handleKeyDown(_ event: NSEvent) {
@@ -762,8 +935,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
             togglePause()
         case 124: // Right arrow
             goNext()
+            flashArrow(.right)
         case 123: // Left arrow
             goPrevious()
+            flashArrow(.left)
         case 126: // Up arrow — move toward Favorite
             tagUp(path: paths[currentIndex])
             updateDisplayState()
@@ -773,9 +948,11 @@ class SlideshowController: NSObject, NSWindowDelegate {
                     scheduleAdvance()
                 }
             }
+            handleTagResult(direction: .up)
         case 125: // Down arrow — move toward Trash
             tagDown(path: paths[currentIndex])
             updateDisplayState()
+            handleTagResult(direction: .down)
         case 53:  // Escape
             NSApplication.shared.terminate(nil)
         case 12:  // Q
@@ -797,8 +974,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
         if location.x < leftZone {
             goPrevious()
+            flashArrow(.left)
         } else if location.x > rightZone {
             goNext()
+            flashArrow(.right)
         } else {
             togglePause()
         }
@@ -853,5 +1032,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
         advanceTimer?.invalidate()
         statusFadeTimer?.invalidate()
         refreshTimer?.invalidate()
+        autoAdvanceTimer?.invalidate()
+        arrowLeft.fadeTimer?.invalidate()
+        arrowRight.fadeTimer?.invalidate()
+        arrowUp.fadeTimer?.invalidate()
+        arrowDown.fadeTimer?.invalidate()
     }
 }
