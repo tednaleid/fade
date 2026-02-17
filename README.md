@@ -56,6 +56,7 @@ fade [directory] [options]
 | `--actual-size` | off | Use `--width`/`--height` instead of fitting to screen |
 | `--width` | 800 | Initial window width |
 | `--height` | 1200 | Initial window height |
+| `--slider` | off | Start with comparison slider visible |
 | `--foreground` | off | Keep the CLI attached instead of detaching to background |
 
 ### Controls
@@ -66,6 +67,7 @@ fade [directory] [options]
 | Left arrow | Previous image (including trash) |
 | Up arrow | Tag toward Favorite (Trash > Untagged > Favorite) |
 | Down arrow | Tag toward Trash (Favorite > Untagged > Trash) |
+| S | Toggle comparison slider (current vs next image) |
 | Space | Toggle pause/play |
 | Q / Escape | Quit |
 | Click left 10% | Previous image (including trash) |
@@ -75,6 +77,14 @@ fade [directory] [options]
 All navigation and tagging actions show a brief directional arrow indicator on the
 corresponding edge of the screen. When tagging results in Favorite or Trash, the
 slideshow auto-advances to the next untrashed image after the indicator fades.
+
+### Comparison slider
+
+Press S to enter slider mode, which shows a vertical divider with a draggable handle.
+The current image is on the left, the next image on the right. Drag the handle to
+compare the two images. Left/right arrows advance both images as a pair. Press S or
+Escape to exit slider mode. Entering slider mode pauses the slideshow; exiting
+restores the previous play state. Click zones are disabled while the slider is active.
 
 ## Examples
 

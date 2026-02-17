@@ -40,6 +40,9 @@ struct Fade: ParsableCommand {
     @Flag(name: .long, help: .hidden)
     var _spawned: Bool = false
 
+    @Flag(name: .long, help: "Start with comparison slider visible.")
+    var slider: Bool = false
+
     @Option(help: "Seconds between directory rescans for new images.")
     var scan: Double = 30.0
 
@@ -91,7 +94,8 @@ struct Fade: ParsableCommand {
             windowHeight: CGFloat(height),
             directoryURL: dirURL,
             isRandom: random,
-            scanInterval: scan
+            scanInterval: scan,
+            startWithSlider: slider
         )
 
         // Spawn a background process so the CLI returns immediately
@@ -222,6 +226,7 @@ struct SlideshowConfig {
     let directoryURL: URL
     let isRandom: Bool
     let scanInterval: Double
+    let startWithSlider: Bool
 }
 
 // MARK: - App Delegate
@@ -405,6 +410,78 @@ class DirectionalArrowView: NSView {
     }
 }
 
+// MARK: - Slider Divider View
+
+class SliderDividerView: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    private var isDragging = false
+
+    // The full-height line width and the handle dimensions
+    private let lineWidth: CGFloat = 2
+    private let handleWidth: CGFloat = 24
+    private let handleHeight: CGFloat = 48
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let bounds = self.bounds
+        let cx = bounds.midX
+        let cy = bounds.midY
+
+        // Vertical line
+        NSColor.white.withAlphaComponent(0.8).setFill()
+        NSBezierPath(rect: NSRect(x: cx - lineWidth / 2, y: 0, width: lineWidth, height: bounds.height)).fill()
+
+        // Handle pill
+        let handleRect = NSRect(
+            x: cx - handleWidth / 2,
+            y: cy - handleHeight / 2,
+            width: handleWidth,
+            height: handleHeight)
+        let pill = NSBezierPath(roundedRect: handleRect, xRadius: handleWidth / 2, yRadius: handleWidth / 2)
+        NSColor(white: 0.2, alpha: 0.9).setFill()
+        pill.fill()
+        NSColor.white.withAlphaComponent(0.8).setStroke()
+        pill.lineWidth = 1.5
+        pill.stroke()
+
+        // Grip lines on handle
+        NSColor.white.withAlphaComponent(0.6).setStroke()
+        for offset: CGFloat in [-4, 0, 4] {
+            let gripPath = NSBezierPath()
+            gripPath.move(to: NSPoint(x: cx - 5, y: cy + offset))
+            gripPath.line(to: NSPoint(x: cx + 5, y: cy + offset))
+            gripPath.lineWidth = 1
+            gripPath.stroke()
+        }
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isDragging = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDragging, let sv = superview else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        let parentLocation = sv.convert(event.locationInWindow, from: nil)
+        onDrag?(parentLocation.x)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDragging = false
+    }
+}
+
 // MARK: - Slideshow Controller
 
 class SlideshowController: NSObject, NSWindowDelegate {
@@ -433,6 +510,12 @@ class SlideshowController: NSObject, NSWindowDelegate {
     var advanceTimer: Timer?
     var refreshTimer: Timer?
     var autoAdvanceTimer: Timer?
+
+    // Comparison slider state
+    var isSliderMode: Bool = false
+    var wasPausedBeforeSlider: Bool = false
+    var sliderDivider: SliderDividerView?
+    var sliderPosition: CGFloat = 1.0
 
     // Preloaded next image
     var preloadedImage: NSImage?
@@ -607,6 +690,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
         preloadNext()
         scheduleAdvance()
         startRefreshTimer()
+
+        if config.startWithSlider {
+            enterSliderMode()
+        }
     }
 
     // MARK: - Display State
@@ -930,6 +1017,25 @@ class SlideshowController: NSObject, NSWindowDelegate {
     // MARK: - Keyboard
 
     func handleKeyDown(_ event: NSEvent) {
+        // Slider mode intercepts most keys
+        if isSliderMode {
+            switch event.keyCode {
+            case 124: // Right arrow — advance pair forward
+                sliderAdvancePair(forward: true)
+            case 123: // Left arrow — advance pair backward
+                sliderAdvancePair(forward: false)
+            case 1:   // S — exit slider mode
+                exitSliderMode()
+            case 53:  // Escape — exit slider mode
+                exitSliderMode()
+            case 12:  // Q — quit
+                NSApplication.shared.terminate(nil)
+            default:
+                break
+            }
+            return
+        }
+
         switch event.keyCode {
         case 49:  // Space
             togglePause()
@@ -953,6 +1059,8 @@ class SlideshowController: NSObject, NSWindowDelegate {
             tagDown(path: paths[currentIndex])
             updateDisplayState()
             handleTagResult(direction: .down)
+        case 1:   // S — enter slider mode
+            enterSliderMode()
         case 53:  // Escape
             NSApplication.shared.terminate(nil)
         case 12:  // Q
@@ -965,6 +1073,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
     // MARK: - Click Handling
 
     @objc func handleClick(_ recognizer: NSClickGestureRecognizer) {
+        guard !isSliderMode else { return }
         guard let contentView = window.contentView else { return }
         let location = recognizer.location(in: contentView)
         let width = contentView.bounds.width
@@ -981,6 +1090,112 @@ class SlideshowController: NSObject, NSWindowDelegate {
         } else {
             togglePause()
         }
+    }
+
+    // MARK: - Comparison Slider
+
+    func enterSliderMode() {
+        guard let nextIdx = nextIndex(), let nextImage = loadImage(at: nextIdx) else {
+            showStatusMessage("No next image to compare")
+            return
+        }
+
+        isSliderMode = true
+        wasPausedBeforeSlider = isPaused
+        if !isPaused { togglePause() }
+
+        // Show next image in backView
+        let nextIsTrash = getFileTags(path: paths[nextIdx]).contains(trashTag.finderTag)
+        backView.image = nextImage
+        backView.contentFilters = nextIsTrash ? [desaturateFilter] : []
+        backView.alphaValue = 1
+
+        // Start with divider at right edge (current image fully visible)
+        sliderPosition = 1.0
+        updateSliderMask()
+
+        // Create and position divider
+        guard let contentView = window.contentView else { return }
+        let dividerWidth: CGFloat = 32
+        let divider = SliderDividerView(frame: NSRect(
+            x: contentView.bounds.width - dividerWidth / 2,
+            y: 0,
+            width: dividerWidth,
+            height: contentView.bounds.height))
+        divider.autoresizingMask = [.height]
+        divider.onDrag = { [weak self] x in
+            guard let self = self, let cv = self.window.contentView else { return }
+            let clamped = max(0, min(x, cv.bounds.width))
+            self.sliderPosition = clamped / cv.bounds.width
+            self.updateSliderMask()
+            self.repositionDivider()
+        }
+        contentView.addSubview(divider)
+        sliderDivider = divider
+    }
+
+    func exitSliderMode() {
+        isSliderMode = false
+        sliderDivider?.removeFromSuperview()
+        sliderDivider = nil
+        frontView.layer?.mask = nil
+        backView.alphaValue = 0
+        backView.image = nil
+
+        if !wasPausedBeforeSlider {
+            togglePause()
+        }
+    }
+
+    func updateSliderMask() {
+        guard isSliderMode else {
+            frontView.layer?.mask = nil
+            return
+        }
+        let bounds = frontView.bounds
+        let maskLayer = CALayer()
+        maskLayer.frame = bounds
+        let visibleRect = CALayer()
+        visibleRect.frame = CGRect(x: 0, y: 0, width: bounds.width * sliderPosition, height: bounds.height)
+        visibleRect.backgroundColor = NSColor.white.cgColor
+        maskLayer.addSublayer(visibleRect)
+        frontView.layer?.mask = maskLayer
+    }
+
+    func repositionDivider() {
+        guard let divider = sliderDivider, let contentView = window.contentView else { return }
+        let x = contentView.bounds.width * sliderPosition
+        divider.frame.origin.x = x - divider.frame.width / 2
+    }
+
+    // Advance both images as a pair in slider mode
+    func sliderAdvancePair(forward: Bool) {
+        let newCurrentIdx: Int
+        if forward {
+            guard let idx = nextIndex() else { return }
+            newCurrentIdx = idx
+        } else {
+            newCurrentIdx = previousIndex()
+        }
+
+        guard let currentImage = loadImage(at: newCurrentIdx) else { return }
+        currentIndex = newCurrentIdx
+        frontView.image = currentImage
+        updateDisplayState()
+
+        // Load the comparison image (next after new current)
+        let savedIndex = currentIndex
+        if let nextIdx = nextIndex(), let nextImage = loadImage(at: nextIdx) {
+            let nextIsTrash = getFileTags(path: paths[nextIdx]).contains(trashTag.finderTag)
+            backView.image = nextImage
+            backView.contentFilters = nextIsTrash ? [desaturateFilter] : []
+        } else {
+            backView.image = nil
+        }
+        currentIndex = savedIndex
+
+        updateSliderMask()
+        repositionDivider()
     }
 
     // MARK: - Directory Refresh
@@ -1027,6 +1242,13 @@ class SlideshowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
+
+    func windowDidResize(_ notification: Notification) {
+        if isSliderMode {
+            updateSliderMask()
+            repositionDivider()
+        }
+    }
 
     func windowWillClose(_ notification: Notification) {
         advanceTimer?.invalidate()
