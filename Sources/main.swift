@@ -516,6 +516,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
     var wasPausedBeforeSlider: Bool = false
     var sliderDivider: SliderDividerView?
     var sliderPosition: CGFloat = 1.0
+    var sliderComparisonIndex: Int?
 
     // Preloaded next image
     var preloadedImage: NSImage?
@@ -1024,6 +1025,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
                 sliderAdvancePair(forward: true)
             case 123: // Left arrow — advance pair backward
                 sliderAdvancePair(forward: false)
+            case 126: // Up arrow — tag comparison image toward Favorite
+                sliderTagComparison(direction: .up)
+            case 125: // Down arrow — tag comparison image toward Trash
+                sliderTagComparison(direction: .down)
             case 1:   // S — exit slider mode
                 exitSliderMode()
             case 53:  // Escape — exit slider mode
@@ -1102,6 +1107,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
         isSliderMode = true
         wasPausedBeforeSlider = isPaused
+        sliderComparisonIndex = nextIdx
         if !isPaused { togglePause() }
 
         // Show next image in backView
@@ -1136,6 +1142,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     func exitSliderMode() {
         isSliderMode = false
+        sliderComparisonIndex = nil
         sliderDivider?.removeFromSuperview()
         sliderDivider = nil
         frontView.layer?.mask = nil
@@ -1186,16 +1193,86 @@ class SlideshowController: NSObject, NSWindowDelegate {
         // Load the comparison image (next after new current)
         let savedIndex = currentIndex
         if let nextIdx = nextIndex(), let nextImage = loadImage(at: nextIdx) {
+            sliderComparisonIndex = nextIdx
             let nextIsTrash = getFileTags(path: paths[nextIdx]).contains(trashTag.finderTag)
             backView.image = nextImage
             backView.contentFilters = nextIsTrash ? [desaturateFilter] : []
         } else {
+            sliderComparisonIndex = nil
             backView.image = nil
         }
         currentIndex = savedIndex
 
         updateSliderMask()
         repositionDivider()
+    }
+
+    // Find the next untrashed image after a given index, skipping currentIndex.
+    func nextComparisonIndex(after startIndex: Int) -> Int? {
+        let count = paths.count
+        guard count > 0 else { return nil }
+
+        var candidate = startIndex
+        for _ in 0..<count {
+            candidate += 1
+            if candidate >= count {
+                if config.noLoop { return nil }
+                candidate = 0
+            }
+            if candidate == startIndex { return nil }
+            if candidate == currentIndex { continue }
+            let tags = getFileTags(path: paths[candidate])
+            if !tags.contains(trashTag.finderTag) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    // Load an image into the comparison (right) side of the slider.
+    func sliderLoadComparison(at index: Int) {
+        guard let image = loadImage(at: index) else { return }
+        sliderComparisonIndex = index
+        let isTrash = getFileTags(path: paths[index]).contains(trashTag.finderTag)
+        backView.image = image
+        backView.contentFilters = isTrash ? [desaturateFilter] : []
+        updateSliderMask()
+        repositionDivider()
+    }
+
+    // Tag the comparison image and auto-advance or show dash.
+    func sliderTagComparison(direction: DirectionalArrowView.Direction) {
+        guard let compIdx = sliderComparisonIndex else { return }
+        autoAdvanceTimer?.invalidate()
+
+        if direction == .up {
+            tagUp(path: paths[compIdx])
+        } else {
+            tagDown(path: paths[compIdx])
+        }
+
+        let tags = getFileTags(path: paths[compIdx])
+        let isFavorite = tags.contains(favoriteTag.finderTag)
+        let isTrash = tags.contains(trashTag.finderTag)
+
+        if isFavorite || isTrash {
+            flashArrow(direction)
+            autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                if let nextIdx = self.nextComparisonIndex(after: compIdx) {
+                    self.sliderLoadComparison(at: nextIdx)
+                } else {
+                    self.exitSliderMode()
+                    self.showStatusMessage("1 untrashed image")
+                }
+            }
+        } else {
+            // Untagged — show dash, update desaturation, no advance
+            let arrowView = direction == .up ? arrowUp : arrowDown
+            let dashColor = direction == .up ? NSColor.systemRed : NSColor.systemGreen
+            arrowView.flashDash(withColor: dashColor)
+            backView.contentFilters = []
+        }
     }
 
     // MARK: - Directory Refresh
