@@ -29,6 +29,11 @@ just install
 
 This builds a release binary and symlinks it to `~/.local/bin/fade`.
 
+To add an "Open in Fade" right-click option in Finder, create a Quick Action in
+Automator: set "Workflow receives" to files or folders in Finder, add a Run Shell
+Script action with "Pass input" set to "as arguments", and use
+`~/.local/bin/fade "$1"` as the script.
+
 Or build manually:
 
 ```
@@ -38,10 +43,11 @@ swift build -c release
 ## Usage
 
 ```
-fade [directory] [options]
+fade [directory-or-file] [options]
 ```
 
-`directory` defaults to the current directory.
+`directory-or-file` defaults to the current directory. If a file path is given,
+fade opens the containing directory and starts on that image.
 
 ### Options
 
@@ -103,4 +109,10 @@ fade ~/Photos --random --seed 42
 
 # Show all images once and exit
 fade ./images --no-loop
+
+# Start on a specific image
+fade ~/Photos/sunset.jpg
+
+# Start on an image with slider comparison
+fade ~/Photos/sunset.jpg --slider
 ```

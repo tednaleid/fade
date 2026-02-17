@@ -53,18 +53,29 @@ struct Fade: ParsableCommand {
     var height: Int = 1200
 
     mutating func run() throws {
-        let resolvedDir = (directory as NSString).standardizingPath
-        let dirURL: URL
-        if resolvedDir.hasPrefix("/") {
-            dirURL = URL(fileURLWithPath: resolvedDir, isDirectory: true)
+        let resolvedPath = (directory as NSString).standardizingPath
+        let inputURL: URL
+        if resolvedPath.hasPrefix("/") {
+            inputURL = URL(fileURLWithPath: resolvedPath)
         } else {
-            dirURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent(resolvedDir, isDirectory: true)
+            inputURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent(resolvedPath)
         }
 
+        // Determine if argument is a file or directory
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: dirURL.path, isDirectory: &isDir), isDir.boolValue else {
-            throw ValidationError("Not a directory: \(dirURL.path)")
+        guard FileManager.default.fileExists(atPath: inputURL.path, isDirectory: &isDir) else {
+            throw ValidationError("Path does not exist: \(inputURL.path)")
+        }
+
+        let dirURL: URL
+        let startFile: String?
+        if isDir.boolValue {
+            dirURL = inputURL
+            startFile = nil
+        } else {
+            dirURL = inputURL.deletingLastPathComponent()
+            startFile = inputURL.path
         }
 
         var paths = loadImagePaths(from: dirURL)
@@ -95,7 +106,8 @@ struct Fade: ParsableCommand {
             directoryURL: dirURL,
             isRandom: random,
             scanInterval: scan,
-            startWithSlider: slider
+            startWithSlider: slider,
+            startFile: startFile
         )
 
         // Spawn a background process so the CLI returns immediately
@@ -227,6 +239,7 @@ struct SlideshowConfig {
     let isRandom: Bool
     let scanInterval: Double
     let startWithSlider: Bool
+    let startFile: String?  // If set, start on this file instead of first untrashed
 }
 
 // MARK: - App Delegate
@@ -644,8 +657,14 @@ class SlideshowController: NSObject, NSWindowDelegate {
     func start() {
         guard !paths.isEmpty else { return }
 
-        // Find the first untrashed image to display
-        guard let startIndex = firstUntrashedIndex() else {
+        // Find the starting image: use startFile if provided, otherwise first untrashed
+        let startIndex: Int?
+        if let startFile = config.startFile, let idx = paths.firstIndex(of: startFile) {
+            startIndex = idx
+        } else {
+            startIndex = firstUntrashedIndex()
+        }
+        guard let startIndex else {
             // All images are trashed
             window.makeKeyAndOrderFront(nil)
             let clickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
