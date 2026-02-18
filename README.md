@@ -88,7 +88,8 @@ slideshow auto-advances to the next untrashed image after the indicator fades.
 
 Press S to enter slider mode, which shows a vertical divider with a draggable handle.
 The current image is on the left, the next image on the right. Drag the handle to
-compare the two images. Left/right arrows advance both images as a pair. Up/down
+compare the two images. Left/right arrows change the comparison (right) image while
+the reference (left) stays fixed; right skips trashed, left includes trashed. Up/down
 arrows tag the comparison (right) image, using the same Favorite/Trash cycle as
 normal mode. After tagging as Favorite or Trash, the next comparison candidate loads
 automatically. Press S or Escape to exit slider mode. Entering slider mode pauses

@@ -485,7 +485,6 @@ class SliderDividerView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard isDragging, let sv = superview else { return }
-        let location = convert(event.locationInWindow, from: nil)
         let parentLocation = sv.convert(event.locationInWindow, from: nil)
         onDrag?(parentLocation.x)
     }
@@ -1040,10 +1039,10 @@ class SlideshowController: NSObject, NSWindowDelegate {
         // Slider mode intercepts most keys
         if isSliderMode {
             switch event.keyCode {
-            case 124: // Right arrow — advance pair forward
-                sliderAdvancePair(forward: true)
-            case 123: // Left arrow — advance pair backward
-                sliderAdvancePair(forward: false)
+            case 124: // Right arrow — next comparison image (untrashed)
+                sliderAdvanceComparison(forward: true)
+            case 123: // Left arrow — previous comparison image (including trashed)
+                sliderAdvanceComparison(forward: false)
             case 126: // Up arrow — tag comparison image toward Favorite
                 sliderTagComparison(direction: .up)
             case 125: // Down arrow — tag comparison image toward Trash
@@ -1194,36 +1193,17 @@ class SlideshowController: NSObject, NSWindowDelegate {
         divider.frame.origin.x = x - divider.frame.width / 2
     }
 
-    // Advance both images as a pair in slider mode
-    func sliderAdvancePair(forward: Bool) {
-        let newCurrentIdx: Int
+    // Change the comparison (right) image, keeping the reference (left) image fixed.
+    func sliderAdvanceComparison(forward: Bool) {
+        guard let compIdx = sliderComparisonIndex else { return }
+        let newIdx: Int?
         if forward {
-            guard let idx = nextIndex() else { return }
-            newCurrentIdx = idx
+            newIdx = nextComparisonIndex(after: compIdx)
         } else {
-            newCurrentIdx = previousIndex()
+            newIdx = previousComparisonIndex(before: compIdx)
         }
-
-        guard let currentImage = loadImage(at: newCurrentIdx) else { return }
-        currentIndex = newCurrentIdx
-        frontView.image = currentImage
-        updateDisplayState()
-
-        // Load the comparison image (next after new current)
-        let savedIndex = currentIndex
-        if let nextIdx = nextIndex(), let nextImage = loadImage(at: nextIdx) {
-            sliderComparisonIndex = nextIdx
-            let nextIsTrash = getFileTags(path: paths[nextIdx]).contains(trashTag.finderTag)
-            backView.image = nextImage
-            backView.contentFilters = nextIsTrash ? [desaturateFilter] : []
-        } else {
-            sliderComparisonIndex = nil
-            backView.image = nil
-        }
-        currentIndex = savedIndex
-
-        updateSliderMask()
-        repositionDivider()
+        guard let idx = newIdx else { return }
+        sliderLoadComparison(at: idx)
     }
 
     // Find the next untrashed image after a given index, skipping currentIndex.
@@ -1244,6 +1224,25 @@ class SlideshowController: NSObject, NSWindowDelegate {
             if !tags.contains(trashTag.finderTag) {
                 return candidate
             }
+        }
+        return nil
+    }
+
+    // Find the previous image before a given index (including trashed), skipping currentIndex.
+    func previousComparisonIndex(before startIndex: Int) -> Int? {
+        let count = paths.count
+        guard count > 0 else { return nil }
+
+        var candidate = startIndex
+        for _ in 0..<count {
+            candidate -= 1
+            if candidate < 0 {
+                if config.noLoop { return nil }
+                candidate = count - 1
+            }
+            if candidate == startIndex { return nil }
+            if candidate == currentIndex { continue }
+            return candidate
         }
         return nil
     }
@@ -1276,7 +1275,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
         if isFavorite || isTrash {
             flashArrow(direction)
-            autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
                 if let nextIdx = self.nextComparisonIndex(after: compIdx) {
                     self.sliderLoadComparison(at: nextIdx)
