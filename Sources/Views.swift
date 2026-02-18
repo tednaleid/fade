@@ -5,7 +5,7 @@ import AppKit
 
 // MARK: - App Delegate
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor class AppDelegate: NSObject, NSApplicationDelegate {
     let config: SlideshowConfig
     var controller: SlideshowController?
 
@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Slideshow Window
 
-class SlideshowWindow: NSWindow {
+@MainActor class SlideshowWindow: NSWindow {
     weak var keyHandler: SlideshowController?
 
     override func keyDown(with event: NSEvent) {
@@ -39,7 +39,7 @@ class SlideshowWindow: NSWindow {
 
 // MARK: - Status Icon View
 
-class StatusIconView: NSView {
+@MainActor class StatusIconView: NSView {
     enum Icon { case pause, play, neutral }
 
     var icon: Icon = .pause {
@@ -96,7 +96,7 @@ class StatusIconView: NSView {
 
 // MARK: - Directional Arrow View
 
-class DirectionalArrowView: NSView {
+@MainActor class DirectionalArrowView: NSView {
     enum Direction { case left, right, up, down }
 
     let direction: Direction
@@ -133,9 +133,11 @@ class DirectionalArrowView: NSView {
         fadeTimer?.invalidate()
         alphaValue = 1
         fadeTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                self?.animator().alphaValue = 0
+            MainActor.assumeIsolated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.3
+                    self?.animator().alphaValue = 0
+                }
             }
         }
     }
@@ -183,7 +185,7 @@ class DirectionalArrowView: NSView {
 
 // MARK: - Slider Divider View
 
-class SliderDividerView: NSView {
+@MainActor class SliderDividerView: NSView {
     var onDrag: ((CGFloat) -> Void)?
     private var isDragging = false
 

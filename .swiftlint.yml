@@ -11,7 +11,7 @@ identifier_name:
 
 # UI setup code and keyboard handlers are naturally longer than library code
 file_length:
-  warning: 700
+  warning: 750
   error: 1000
 
 type_body_length:

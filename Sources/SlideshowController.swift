@@ -1,9 +1,9 @@
 // ABOUTME: Core slideshow controller managing window, navigation, timers, and display.
 // ABOUTME: Handles image loading, cross-fade transitions, tagging, pause/play, and keyboard/click input.
 
-import AppKit
+@preconcurrency import AppKit
 
-class SlideshowController: NSObject, NSWindowDelegate {
+@MainActor class SlideshowController: NSObject, NSWindowDelegate {
     let config: SlideshowConfig
     var paths: [String]
     let window: SlideshowWindow
@@ -297,13 +297,24 @@ class SlideshowController: NSObject, NSWindowDelegate {
             return
         }
         preloadedIndex = idx
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let image = self?.loadImage(at: idx)
-            DispatchQueue.main.async {
-                guard let self = self, self.preloadedIndex == idx else { return }
+        let path = paths[idx]
+        Task.detached {
+            let image = SlideshowController.loadImageFromDisk(path: path)
+            await MainActor.run { [weak self] in
+                guard let self, self.preloadedIndex == idx else { return }
                 self.preloadedImage = image
             }
         }
+    }
+
+    nonisolated private static func loadImageFromDisk(path: String) -> NSImage? {
+        guard let image = NSImage(contentsOfFile: path) else { return nil }
+        // Force decode by requesting a CGImage
+        if let tiff = image.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff) {
+            _ = bitmap.cgImage
+        }
+        return image
     }
 
     // MARK: - Navigation
@@ -357,7 +368,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
         advanceTimer?.invalidate()
         guard !isPaused else { return }
         advanceTimer = Timer.scheduledTimer(withTimeInterval: config.duration, repeats: false) { [weak self] _ in
-            self?.advanceWithFade()
+            MainActor.assumeIsolated { self?.advanceWithFade() }
         }
     }
 
@@ -413,12 +424,14 @@ class SlideshowController: NSObject, NSWindowDelegate {
             frontView.animator().alphaValue = 0
             backView.animator().alphaValue = 1
         }, completionHandler: { [weak self] in
-            guard let self = self else { return }
-            // Swap: front becomes back, back becomes front
-            self.frontView.alphaValue = 1
-            self.frontView.image = self.backView.image
-            self.backView.alphaValue = 0
-            self.backView.image = nil
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // Swap: front becomes back, back becomes front
+                self.frontView.alphaValue = 1
+                self.frontView.image = self.backView.image
+                self.backView.alphaValue = 0
+                self.backView.image = nil
+            }
         })
     }
 
@@ -481,9 +494,11 @@ class SlideshowController: NSObject, NSWindowDelegate {
         statusIcon.alphaValue = 1
 
         statusFadeTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { [weak self] _ in
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                self?.statusIcon.animator().alphaValue = 0
+            MainActor.assumeIsolated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.3
+                    self?.statusIcon.animator().alphaValue = 0
+                }
             }
         }
     }
@@ -495,9 +510,11 @@ class SlideshowController: NSObject, NSWindowDelegate {
         statusLabel.alphaValue = 1
 
         statusFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.5
-                self?.statusLabel.animator().alphaValue = 0
+            MainActor.assumeIsolated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.5
+                    self?.statusLabel.animator().alphaValue = 0
+                }
             }
         }
     }
@@ -524,14 +541,14 @@ class SlideshowController: NSObject, NSWindowDelegate {
     // Returns true if the image was tagged (Favorite or Trash) and auto-advance was scheduled.
     @discardableResult
     func reactToTagChange(at index: Int, direction: DirectionalArrowView.Direction,
-                          advanceDelay: Double, advanceAction: @escaping () -> Void) -> Bool {
+                          advanceDelay: Double, advanceAction: @escaping @MainActor @Sendable () -> Void) -> Bool {
         autoAdvanceTimer?.invalidate()
         let path = paths[index]
 
         if isFavorited(path: path) || isTrashed(path: path) {
             flashArrow(direction)
             autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: advanceDelay, repeats: false) { _ in
-                advanceAction()
+                MainActor.assumeIsolated { advanceAction() }
             }
             return true
         } else {
@@ -624,7 +641,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     func startRefreshTimer() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: config.scanInterval, repeats: true) { [weak self] _ in
-            self?.refreshDirectory()
+            MainActor.assumeIsolated { self?.refreshDirectory() }
         }
     }
 

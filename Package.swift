@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 // ABOUTME: SPM package definition for the fade image slideshow app.
 // ABOUTME: Declares macOS 13+ target and swift-argument-parser dependency.
 

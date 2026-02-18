@@ -1,7 +1,7 @@
 // ABOUTME: CLI entry point for the fade image slideshow app.
 // ABOUTME: Parses arguments, spawns background process, and launches the NSApplication.
 
-import AppKit
+@preconcurrency import AppKit
 import ArgumentParser
 
 @main
@@ -132,11 +132,13 @@ struct Fade: ParsableCommand {
             return
         }
 
-        let app = NSApplication.shared
-        app.setActivationPolicy(.regular)
+        MainActor.assumeIsolated {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.regular)
 
-        let delegate = AppDelegate(config: config)
-        app.delegate = delegate
-        app.run()
+            let delegate = AppDelegate(config: config)
+            app.delegate = delegate
+            app.run()
+        }
     }
 }
