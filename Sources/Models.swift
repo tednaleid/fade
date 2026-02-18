@@ -102,8 +102,17 @@ enum KeyCode: UInt16 {
     case upArrow = 126
     case downArrow = 125
     case sKey = 1
+    case tKey = 17
     case escape = 53
     case qKey = 12
+}
+
+// MARK: - View Mode
+
+enum ViewMode {
+    case normal
+    case slider
+    case triptych
 }
 
 // MARK: - Config
@@ -120,5 +129,6 @@ struct SlideshowConfig {
     let isRandom: Bool
     let scanInterval: Double
     let startWithSlider: Bool
+    let startWithTriptych: Bool
     let startFile: String?  // If set, start on this file instead of first untrashed
 }

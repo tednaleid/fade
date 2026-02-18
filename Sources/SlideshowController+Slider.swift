@@ -7,14 +7,26 @@ import AppKit
 
 extension SlideshowController {
 
+    func handleSliderKey(_ key: KeyCode) {
+        switch key {
+        case .rightArrow: sliderAdvanceComparison(forward: true)
+        case .leftArrow:  sliderAdvanceComparison(forward: false)
+        case .upArrow:    sliderTagComparison(direction: .up)
+        case .downArrow:  sliderTagComparison(direction: .down)
+        case .sKey:       exitSliderMode()
+        case .tKey:       exitSliderMode(); enterTriptychMode()
+        default:          break
+        }
+    }
+
     func enterSliderMode() {
         guard let nextIdx = nextIndex(), let nextImage = loadImage(at: nextIdx) else {
             showStatusMessage("No next image to compare")
             return
         }
 
-        isSliderMode = true
-        wasPausedBeforeSlider = isPaused
+        viewMode = .slider
+        wasPausedBeforeMode = isPaused
         sliderComparisonIndex = nextIdx
         if !isPaused { togglePause() }
 
@@ -48,7 +60,7 @@ extension SlideshowController {
     }
 
     func exitSliderMode() {
-        isSliderMode = false
+        viewMode = .normal
         sliderComparisonIndex = nil
         sliderDivider?.removeFromSuperview()
         sliderDivider = nil
@@ -56,13 +68,13 @@ extension SlideshowController {
         backView.alphaValue = 0
         backView.image = nil
 
-        if !wasPausedBeforeSlider {
+        if !wasPausedBeforeMode {
             togglePause()
         }
     }
 
     func updateSliderMask() {
-        guard isSliderMode else {
+        guard viewMode == .slider else {
             frontView.layer?.mask = nil
             return
         }

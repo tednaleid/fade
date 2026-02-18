@@ -31,11 +31,19 @@
     var autoAdvanceTimer: Timer?
 
     // Comparison slider state
-    var isSliderMode: Bool = false
-    var wasPausedBeforeSlider: Bool = false
+    var viewMode: ViewMode = .normal
+    var wasPausedBeforeMode: Bool = false
     var sliderDivider: SliderDividerView?
     var sliderPosition: CGFloat = 1.0
     var sliderComparisonIndex: Int?
+
+    // Triptych state
+    var triptychLeftView: NSImageView?
+    var triptychMiddleView: NSImageView?
+    var triptychRightView: NSImageView?
+    var triptychLeftIndex: Int?
+    var triptychRightIndex: Int?
+    var savedWindowWidth: CGFloat?
 
     // Preloaded next image
     var preloadedImage: NSImage?
@@ -219,6 +227,8 @@
 
         if config.startWithSlider {
             enterSliderMode()
+        } else if config.startWithTriptych {
+            enterTriptychMode()
         }
     }
 
@@ -564,64 +574,72 @@
     func handleKeyDown(_ event: NSEvent) {
         guard let key = KeyCode(rawValue: event.keyCode) else { return }
 
-        // Slider mode intercepts most keys
-        if isSliderMode {
-            switch key {
-            case .rightArrow:
-                sliderAdvanceComparison(forward: true)
-            case .leftArrow:
-                sliderAdvanceComparison(forward: false)
-            case .upArrow:
-                sliderTagComparison(direction: .up)
-            case .downArrow:
-                sliderTagComparison(direction: .down)
-            case .sKey, .escape:
-                exitSliderMode()
-            case .qKey:
-                NSApplication.shared.terminate(nil)
-            case .space:
-                break
-            }
+        // Escape/Q always quit, regardless of mode
+        if key == .escape || key == .qKey {
+            NSApplication.shared.terminate(nil)
             return
         }
 
-        switch key {
-        case .space:
-            togglePause()
-        case .rightArrow:
-            goNext()
-            flashArrow(.right)
-        case .leftArrow:
-            goPrevious()
-            flashArrow(.left)
-        case .upArrow:
-            tagUp(path: paths[currentIndex])
-            updateDisplayState()
-            if allTrashed && !checkAllTrashed() {
-                allTrashed = false
-                if !isPaused {
-                    scheduleAdvance()
+        switch viewMode {
+        case .slider:
+            handleSliderKey(key)
+        case .triptych:
+            handleTriptychKey(key)
+        case .normal:
+            switch key {
+            case .space:
+                togglePause()
+            case .rightArrow:
+                goNext()
+                flashArrow(.right)
+            case .leftArrow:
+                goPrevious()
+                flashArrow(.left)
+            case .upArrow:
+                tagUp(path: paths[currentIndex])
+                updateDisplayState()
+                if allTrashed && !checkAllTrashed() {
+                    allTrashed = false
+                    if !isPaused {
+                        scheduleAdvance()
+                    }
                 }
+                handleTagResult(direction: .up)
+            case .downArrow:
+                tagDown(path: paths[currentIndex])
+                updateDisplayState()
+                handleTagResult(direction: .down)
+            case .sKey:
+                enterSliderMode()
+            case .tKey:
+                enterTriptychMode()
+            default:
+                break
             }
-            handleTagResult(direction: .up)
-        case .downArrow:
-            tagDown(path: paths[currentIndex])
-            updateDisplayState()
-            handleTagResult(direction: .down)
-        case .sKey:
-            enterSliderMode()
-        case .escape, .qKey:
-            NSApplication.shared.terminate(nil)
         }
     }
 
     // MARK: - Click Handling
 
     @objc func handleClick(_ recognizer: NSClickGestureRecognizer) {
-        guard !isSliderMode else { return }
+        guard viewMode != .slider else { return }
         guard let contentView = window.contentView else { return }
         let location = recognizer.location(in: contentView)
         let width = contentView.bounds.width
+
+        if viewMode == .triptych {
+            // Left panel + left 10% of middle = go left
+            // Right panel + right 10% of middle = go right
+            let panelWidth = width / 3.0
+            let leftZone = panelWidth + panelWidth * 0.10
+            let rightZone = 2 * panelWidth - panelWidth * 0.10
+            if location.x < leftZone {
+                triptychNavigate(forward: false)
+            } else if location.x > rightZone {
+                triptychNavigate(forward: true)
+            }
+            return
+        }
 
         let leftZone = width * 0.10
         let rightZone = width * 0.90
@@ -678,14 +696,23 @@
         } else if !allTrashed && checkAllTrashed() {
             enterAllTrashedState()
         }
+
+        if viewMode == .triptych {
+            triptychLoadPanels()
+        }
     }
 
     // MARK: - NSWindowDelegate
 
     func windowDidResize(_ notification: Notification) {
-        if isSliderMode {
+        switch viewMode {
+        case .slider:
             updateSliderMask()
             repositionDivider()
+        case .triptych:
+            triptychLayout()
+        case .normal:
+            break
         }
     }
 

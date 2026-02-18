@@ -41,6 +41,9 @@ struct Fade: ParsableCommand {
     @Flag(name: .long, help: "Start with comparison slider visible.")
     var slider: Bool = false
 
+    @Flag(name: .long, help: "Start with triptych (three-image) view.")
+    var triptych: Bool = false
+
     @Option(help: "Seconds between directory rescans for new images.")
     var scan: Double = 30.0
 
@@ -105,6 +108,7 @@ struct Fade: ParsableCommand {
             isRandom: random,
             scanInterval: scan,
             startWithSlider: slider,
+            startWithTriptych: triptych,
             startFile: startFile
         )
 
