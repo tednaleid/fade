@@ -18,5 +18,10 @@ let package = Package(
             ],
             path: "Sources"
         ),
+        .testTarget(
+            name: "FadeTests",
+            dependencies: ["fade"],
+            path: "Tests"
+        ),
     ]
 )

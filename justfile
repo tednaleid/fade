@@ -1,5 +1,5 @@
-# ABOUTME: Build and install tasks for the fade slideshow app.
-# ABOUTME: Provides release build, install (symlink to ~/.local/bin), and clean.
+# ABOUTME: Build, test, and install tasks for the fade slideshow app.
+# ABOUTME: Provides release build, install, test, lint, and combined check.
 
 # Build release binary
 build:
@@ -13,6 +13,17 @@ install: build
 # Remove build artifacts
 clean:
     swift package clean
+
+# Run tests
+test:
+    swift test
+
+# Run SwiftLint
+lint:
+    swiftlint lint Sources/ Tests/
+
+# Run tests and lint
+check: test lint
 
 # Build and run with example images (for quick testing)
 run *ARGS:
