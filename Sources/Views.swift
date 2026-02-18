@@ -123,9 +123,9 @@ class DirectionalArrowView: NSView {
         flashAndFade()
     }
 
-    func flashDash(withColor c: NSColor) {
+    func flashDash(withColor dashColor: NSColor) {
         drawDash = true
-        color = c
+        color = dashColor
         flashAndFade()
     }
 
@@ -242,8 +242,8 @@ class SliderDividerView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isDragging, let sv = superview else { return }
-        let parentLocation = sv.convert(event.locationInWindow, from: nil)
+        guard isDragging, let parentView = superview else { return }
+        let parentLocation = parentView.convert(event.locationInWindow, from: nil)
         onDrag?(parentLocation.x)
     }
 

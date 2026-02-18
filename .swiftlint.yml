@@ -1,0 +1,27 @@
+# ABOUTME: SwiftLint configuration for the fade slideshow app.
+# ABOUTME: Adjusts defaults for a small AppKit tool with drawing code and keyboard handling.
+
+identifier_name:
+  min_length: 2
+  allowed_symbols: ["_"]
+  excluded:
+    - x
+    - y
+    - z
+
+# UI setup code and keyboard handlers are naturally longer than library code
+file_length:
+  warning: 700
+  error: 1000
+
+type_body_length:
+  warning: 600
+  error: 800
+
+function_body_length:
+  warning: 100
+  error: 150
+
+cyclomatic_complexity:
+  warning: 20
+  error: 30

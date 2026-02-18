@@ -36,10 +36,10 @@ extension SlideshowController {
             width: dividerWidth,
             height: contentView.bounds.height))
         divider.autoresizingMask = [.height]
-        divider.onDrag = { [weak self] x in
-            guard let self = self, let cv = self.window.contentView else { return }
-            let clamped = max(0, min(x, cv.bounds.width))
-            self.sliderPosition = clamped / cv.bounds.width
+        divider.onDrag = { [weak self] dragX in
+            guard let self = self, let contentView = self.window.contentView else { return }
+            let clamped = max(0, min(dragX, contentView.bounds.width))
+            self.sliderPosition = clamped / contentView.bounds.width
             self.updateSliderMask()
             self.repositionDivider()
         }
@@ -78,8 +78,8 @@ extension SlideshowController {
 
     func repositionDivider() {
         guard let divider = sliderDivider, let contentView = window.contentView else { return }
-        let x = contentView.bounds.width * sliderPosition
-        divider.frame.origin.x = x - divider.frame.width / 2
+        let dividerX = contentView.bounds.width * sliderPosition
+        divider.frame.origin.x = dividerX - divider.frame.width / 2
     }
 
     // Change the comparison (right) image, keeping the reference (left) image fixed.

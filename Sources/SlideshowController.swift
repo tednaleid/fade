@@ -43,9 +43,9 @@ class SlideshowController: NSObject, NSWindowDelegate {
 
     // Desaturation filter for trash-tagged images
     let desaturateFilter: CIFilter = {
-        let f = CIFilter(name: "CIColorControls")!
-        f.setValue(0.3, forKey: kCIInputSaturationKey)
-        return f
+        let filter = CIFilter(name: "CIColorControls")!
+        filter.setValue(0.3, forKey: kCIInputSaturationKey)
+        return filter
     }()
 
     init(config: SlideshowConfig) {
@@ -112,7 +112,7 @@ class SlideshowController: NSObject, NSWindowDelegate {
         NSLayoutConstraint.activate([
             statusLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 200)
         ])
 
         // Directional arrow overlays (edges, hidden by default)
@@ -558,9 +558,9 @@ class SlideshowController: NSObject, NSWindowDelegate {
                 sliderTagComparison(direction: .up)
             case .downArrow:
                 sliderTagComparison(direction: .down)
-            case .s, .escape:
+            case .sKey, .escape:
                 exitSliderMode()
-            case .q:
+            case .qKey:
                 NSApplication.shared.terminate(nil)
             case .space:
                 break
@@ -591,9 +591,9 @@ class SlideshowController: NSObject, NSWindowDelegate {
             tagDown(path: paths[currentIndex])
             updateDisplayState()
             handleTagResult(direction: .down)
-        case .s:
+        case .sKey:
             enterSliderMode()
-        case .escape, .q:
+        case .escape, .qKey:
             NSApplication.shared.terminate(nil)
         }
     }
