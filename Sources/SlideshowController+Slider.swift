@@ -54,9 +54,11 @@ extension SlideshowController {
             self.sliderPosition = clamped / contentView.bounds.width
             self.updateSliderMask()
             self.repositionDivider()
+            self.layoutTitlebarLabels()
         }
         contentView.addSubview(divider)
         sliderDivider = divider
+        installTitlebarLabels()
         updateDisplayState()
     }
 
@@ -68,6 +70,7 @@ extension SlideshowController {
         frontView.layer?.mask = nil
         backView.alphaValue = 0
         backView.image = nil
+        removeTitlebarLabels()
         updateDisplayState()
 
         if !wasPausedBeforeMode {

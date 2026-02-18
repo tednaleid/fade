@@ -45,6 +45,10 @@
     var triptychRightIndex: Int?
     var savedWindowWidth: CGFloat?
 
+    // Titlebar labels for multi-image modes
+    var titlebarLabels: [NSTextField] = []
+    var titlebarAccessory: NSTitlebarAccessoryViewController?
+
     // Preloaded next image
     var preloadedImage: NSImage?
     var preloadedIndex: Int?
@@ -250,21 +254,104 @@
 
         switch viewMode {
         case .slider:
-            var title = titleForPath(path)
-            if let compIdx = sliderComparisonIndex {
-                title += "    │    \(titleForPath(paths[compIdx]))"
+            if titlebarLabels.count >= 2 {
+                titlebarLabels[0].stringValue = titleForPath(path)
+                if let compIdx = sliderComparisonIndex {
+                    titlebarLabels[1].stringValue = titleForPath(paths[compIdx])
+                }
             }
-            window.title = title
         case .triptych:
-            let leftTitle = triptychLeftIndex.map { titleForPath(paths[$0]) } ?? ""
-            let middleTitle = titleForPath(path)
-            let rightTitle = triptychRightIndex.map { titleForPath(paths[$0]) } ?? ""
-            window.title = "\(leftTitle)    │    \(middleTitle)    │    \(rightTitle)"
+            if titlebarLabels.count >= 3 {
+                titlebarLabels[0].stringValue = triptychLeftIndex.map { titleForPath(paths[$0]) } ?? ""
+                titlebarLabels[1].stringValue = titleForPath(path)
+                titlebarLabels[2].stringValue = triptychRightIndex.map { titleForPath(paths[$0]) } ?? ""
+            }
         case .normal:
             window.title = titleForPath(path)
         }
 
         frontView.contentFilters = isTrashed(path: path) ? [desaturateFilter] : []
+    }
+
+    // MARK: - Titlebar Labels
+
+    func installTitlebarLabels() {
+        removeTitlebarLabels()
+
+        let count: Int
+        switch viewMode {
+        case .slider: count = 2
+        case .triptych: count = 3
+        case .normal: return
+        }
+
+        let height: CGFloat = 20
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: height))
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: 0.8)
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowBlurRadius = 3
+
+        var labels: [NSTextField] = []
+        for _ in 0..<count {
+            let label = NSTextField(labelWithString: "")
+            label.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+            label.textColor = NSColor(white: 1, alpha: 0.85)
+            label.backgroundColor = .clear
+            label.drawsBackground = false
+            label.alignment = .center
+            label.lineBreakMode = .byTruncatingMiddle
+            label.shadow = shadow
+            containerView.addSubview(label)
+            labels.append(label)
+        }
+
+        titlebarLabels = labels
+
+        let vc = NSTitlebarAccessoryViewController()
+        vc.view = containerView
+        vc.layoutAttribute = .bottom
+        window.addTitlebarAccessoryViewController(vc)
+        titlebarAccessory = vc
+
+        window.title = ""
+        layoutTitlebarLabels()
+    }
+
+    func removeTitlebarLabels() {
+        if let accessory = titlebarAccessory,
+           let idx = window.titlebarAccessoryViewControllers.firstIndex(of: accessory) {
+            window.removeTitlebarAccessoryViewController(at: idx)
+        }
+        titlebarAccessory = nil
+        titlebarLabels = []
+    }
+
+    func layoutTitlebarLabels() {
+        guard !titlebarLabels.isEmpty else { return }
+        let width = window.contentView?.bounds.width ?? window.frame.width
+        let height: CGFloat = 20
+
+        switch viewMode {
+        case .slider:
+            guard titlebarLabels.count == 2 else { return }
+            // Reference label centered in left half, comparison starts at slider position
+            titlebarLabels[0].alignment = .center
+            titlebarLabels[0].frame = NSRect(x: 0, y: 0, width: width * sliderPosition, height: height)
+            titlebarLabels[1].alignment = .center
+            let compX = width * sliderPosition
+            titlebarLabels[1].frame = NSRect(x: compX, y: 0, width: width - compX, height: height)
+        case .triptych:
+            guard titlebarLabels.count == 3 else { return }
+            let gap = Self.triptychGap
+            let panelWidth = (width - 2 * gap) / 3
+            titlebarLabels[0].frame = NSRect(x: 0, y: 0, width: panelWidth, height: height)
+            titlebarLabels[1].frame = NSRect(x: panelWidth + gap, y: 0, width: panelWidth, height: height)
+            titlebarLabels[2].frame = NSRect(x: 2 * (panelWidth + gap), y: 0, width: panelWidth, height: height)
+        case .normal:
+            break
+        }
     }
 
     // MARK: - All-Trashed State
@@ -728,8 +815,10 @@
         case .slider:
             updateSliderMask()
             repositionDivider()
+            layoutTitlebarLabels()
         case .triptych:
             triptychLayout()
+            layoutTitlebarLabels()
         case .normal:
             break
         }

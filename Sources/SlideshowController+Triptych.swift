@@ -7,7 +7,7 @@ import AppKit
 
 extension SlideshowController {
 
-    private static let triptychGap: CGFloat = 2
+    static let triptychGap: CGFloat = 2
 
     func handleTriptychKey(_ key: KeyCode) {
         switch key {
@@ -72,6 +72,7 @@ extension SlideshowController {
         triptychMiddleView = middleView
         triptychRightView = rightView
 
+        installTitlebarLabels()
         triptychLayout()
         triptychLoadPanels()
     }
@@ -94,6 +95,7 @@ extension SlideshowController {
         if let image = loadImage(at: currentIndex) {
             frontView.image = image
         }
+        removeTitlebarLabels()
         updateDisplayState()
 
         // Restore window width
