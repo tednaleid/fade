@@ -57,6 +57,7 @@ extension SlideshowController {
         }
         contentView.addSubview(divider)
         sliderDivider = divider
+        updateDisplayState()
     }
 
     func exitSliderMode() {
@@ -67,6 +68,7 @@ extension SlideshowController {
         frontView.layer?.mask = nil
         backView.alphaValue = 0
         backView.image = nil
+        updateDisplayState()
 
         if !wasPausedBeforeMode {
             togglePause()
@@ -105,6 +107,7 @@ extension SlideshowController {
         }
         guard let idx = newIdx else { return }
         sliderLoadComparison(at: idx)
+        flashArrow(forward ? .right : .left)
     }
 
     // Find the next untrashed image after a given index, skipping currentIndex.
@@ -155,6 +158,7 @@ extension SlideshowController {
         backView.contentFilters = isTrashed(path: paths[index]) ? [desaturateFilter] : []
         updateSliderMask()
         repositionDivider()
+        updateDisplayState()
     }
 
     // Tag the comparison image and auto-advance or show dash.

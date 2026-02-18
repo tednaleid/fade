@@ -63,9 +63,10 @@ extension SlideshowController {
         rightView.imageScaling = .scaleProportionallyUpOrDown
         rightView.wantsLayer = true
 
-        contentView.addSubview(leftView)
-        contentView.addSubview(middleView)
-        contentView.addSubview(rightView)
+        // Insert below overlay views (statusIcon, arrows, etc.) so they remain visible
+        contentView.addSubview(leftView, positioned: .below, relativeTo: statusIcon)
+        contentView.addSubview(middleView, positioned: .below, relativeTo: statusIcon)
+        contentView.addSubview(rightView, positioned: .below, relativeTo: statusIcon)
 
         triptychLeftView = leftView
         triptychMiddleView = middleView
@@ -163,9 +164,11 @@ extension SlideshowController {
         if forward {
             guard let rightIdx = triptychRightIndex else { return }
             currentIndex = rightIdx
+            flashArrow(.right)
         } else {
             guard let leftIdx = triptychLeftIndex else { return }
             currentIndex = leftIdx
+            flashArrow(.left)
         }
         triptychLoadPanels()
     }
@@ -177,6 +180,10 @@ extension SlideshowController {
             tagDown(path: paths[currentIndex])
         }
         updateDisplayState()
+
+        // Update middle panel's desaturation immediately
+        let path = paths[currentIndex]
+        triptychMiddleView?.contentFilters = isTrashed(path: path) ? [desaturateFilter] : []
 
         // Check if un-trashing recovered from all-trashed state
         if direction == .up && allTrashed && !checkAllTrashed() {

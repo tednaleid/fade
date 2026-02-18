@@ -234,16 +234,35 @@
 
     // MARK: - Display State
 
-    // Updates title bar and desaturation filter to reflect current image's tag state.
-    func updateDisplayState() {
-        let path = paths[currentIndex]
+    // Builds a display title for a single image path (filename + tag dots).
+    func titleForPath(_ path: String) -> String {
         let tags = getFileTags(path: path)
-
         var title = (path as NSString).lastPathComponent
         for info in [favoriteTag, trashTag] where tags.contains(info.finderTag) {
             title += "  \(info.dot) \(info.name)"
         }
-        window.title = title
+        return title
+    }
+
+    // Updates title bar and desaturation filter to reflect current image's tag state.
+    func updateDisplayState() {
+        let path = paths[currentIndex]
+
+        switch viewMode {
+        case .slider:
+            var title = titleForPath(path)
+            if let compIdx = sliderComparisonIndex {
+                title += "    │    \(titleForPath(paths[compIdx]))"
+            }
+            window.title = title
+        case .triptych:
+            let leftTitle = triptychLeftIndex.map { titleForPath(paths[$0]) } ?? ""
+            let middleTitle = titleForPath(path)
+            let rightTitle = triptychRightIndex.map { titleForPath(paths[$0]) } ?? ""
+            window.title = "\(leftTitle)    │    \(middleTitle)    │    \(rightTitle)"
+        case .normal:
+            window.title = titleForPath(path)
+        }
 
         frontView.contentFilters = isTrashed(path: path) ? [desaturateFilter] : []
     }
