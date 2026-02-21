@@ -192,7 +192,7 @@ extension SlideshowController {
             allTrashed = false
         }
 
-        reactToTagChange(at: currentIndex, direction: direction, advanceDelay: 0.5) { [weak self] in
+        reactToTagChange(at: currentIndex, direction: direction, advanceDelay: 0) { [weak self] in
             guard let self else { return }
             if let nextIdx = self.nextUntrashedIndex() {
                 self.currentIndex = nextIdx
