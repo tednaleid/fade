@@ -11,10 +11,10 @@ extension SlideshowController {
 
     func handleTriptychKey(_ key: KeyCode) {
         switch key {
-        case .rightArrow: triptychNavigate(forward: true)
-        case .leftArrow:  triptychNavigate(forward: false)
-        case .upArrow:    triptychTagCurrent(direction: .up)
-        case .downArrow:  triptychTagCurrent(direction: .down)
+        case .rightArrow, .lKey: triptychNavigate(forward: true)
+        case .leftArrow,  .hKey: triptychNavigate(forward: false)
+        case .upArrow,    .kKey: triptychTagCurrent(direction: .up)
+        case .downArrow,  .jKey: triptychTagCurrent(direction: .down)
         case .tKey:       exitTriptychMode()
         case .sKey:       exitTriptychMode(); enterSliderMode()
         default:          break

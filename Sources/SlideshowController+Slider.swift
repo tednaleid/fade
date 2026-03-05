@@ -9,10 +9,10 @@ extension SlideshowController {
 
     func handleSliderKey(_ key: KeyCode) {
         switch key {
-        case .rightArrow: sliderAdvanceComparison(forward: true)
-        case .leftArrow:  sliderAdvanceComparison(forward: false)
-        case .upArrow:    sliderTagComparison(direction: .up)
-        case .downArrow:  sliderTagComparison(direction: .down)
+        case .rightArrow, .lKey: sliderAdvanceComparison(forward: true)
+        case .leftArrow,  .hKey: sliderAdvanceComparison(forward: false)
+        case .upArrow,    .kKey: sliderTagComparison(direction: .up)
+        case .downArrow,  .jKey: sliderTagComparison(direction: .down)
         case .sKey:       exitSliderMode()
         case .tKey:       exitSliderMode(); enterTriptychMode()
         default:          break

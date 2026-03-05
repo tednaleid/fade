@@ -695,13 +695,13 @@
             switch key {
             case .space:
                 togglePause()
-            case .rightArrow:
+            case .rightArrow, .lKey:
                 goNext()
                 flashArrow(.right)
-            case .leftArrow:
+            case .leftArrow, .hKey:
                 goPrevious()
                 flashArrow(.left)
-            case .upArrow:
+            case .upArrow, .kKey:
                 tagUp(path: paths[currentIndex])
                 updateDisplayState()
                 if allTrashed && !checkAllTrashed() {
@@ -711,7 +711,7 @@
                     }
                 }
                 handleTagResult(direction: .up)
-            case .downArrow:
+            case .downArrow, .jKey:
                 tagDown(path: paths[currentIndex])
                 updateDisplayState()
                 handleTagResult(direction: .down)

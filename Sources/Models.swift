@@ -101,6 +101,10 @@ enum KeyCode: UInt16 {
     case leftArrow = 123
     case upArrow = 126
     case downArrow = 125
+    case hKey = 4
+    case jKey = 38
+    case kKey = 40
+    case lKey = 37
     case sKey = 1
     case tKey = 17
     case escape = 53
